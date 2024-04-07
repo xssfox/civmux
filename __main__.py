@@ -1,13 +1,10 @@
 import argparse
 
-import os, pty, tty, termios, fcntl, sys
-
-import threading
-
-import time
+import os, pty, tty, termios
 
 import logging
 import serial
+import select
 
 parser = argparse.ArgumentParser(
                     prog='ICOM CIV Mux',
@@ -53,8 +50,6 @@ class interface:
                 os.symlink(self.ttyname, f"{link_name}")
 
 
-        self.thread = threading.Thread(target=self.run, daemon=True)
-        self.thread.start()
 
         logging.debug(f"{self.ttyname} started")
 
@@ -97,10 +92,11 @@ class interface:
                 self.callback(self, self.buffer)
             self.buffer=b''
     
-    def run(self):
-        while 1: #exiting is not an option since reads will be blocking
-            self.read()
-
+    def fileno(self):
+        if self.serial_port:
+            return self.serial_port.fileno()
+        else:
+            return self.control
 
 def callback(instance, data):
     logging.debug(f"rx on {instance.ttyname}")
@@ -118,9 +114,14 @@ ptys = [
 ]
 
 ptys.append(
-    interface(callback=callback, realport="/dev/icomA", baud=19200)
+    interface(callback=callback, realport=args.device, baud=args.baud_rate)
 )
 
 
-ptys[0].thread.join()
-
+while 1:
+    waiting_fds = select.select(
+        ptys, # reading
+        [], # writing
+        []) # errors
+    for waiting_fd in waiting_fds[0]:
+        waiting_fd.read()
