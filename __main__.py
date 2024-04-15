@@ -6,6 +6,9 @@ import logging
 import serial
 import select
 
+import os
+import socket
+
 parser = argparse.ArgumentParser(
                     prog='ICOM CIV Mux',
                     description='Creates virtual serial ports so multiple applications can control the radio at once')
@@ -17,7 +20,7 @@ parser.add_argument('-b','--baud-rate', type=int, help="Baud rate of the radio",
 
 args = parser.parse_args()
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 class interface:
     def __init__(self, link_name="", callback=None, realport=False, baud=None):
@@ -117,7 +120,17 @@ ptys.append(
     interface(callback=callback, realport=args.device, baud=args.baud_rate)
 )
 
+# let systemd know that we are ready
 
+if "NOTIFY_SOCKET" in os.environ :
+    path = os.environ.get("NOTIFY_SOCKET")
+    if path:
+        if path[0] == "@":
+            path = "\0" + path[1:]
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        sock.sendto("READY=1\nSTATUS=PTYs READY\n".encode(), path)
+        print("let systemd know we are ready")
+print("ready")
 while 1:
     waiting_fds = select.select(
         ptys, # reading
